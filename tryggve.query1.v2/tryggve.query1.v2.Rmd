@@ -1,0 +1,381 @@
+---
+title: "Tryggve.query1.v2"
+author: "Lu Yi, Kaarina Kowalec, Patrick Sullivan"
+date: "05/05/2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: textmate
+    df_print: paged
+    code_folding: hide
+params:
+  arg1: "/Users/luyi/Downloads/tryggve"
+  arg2: "NOR"
+
+---
+
+<style type="text/css">
+  .main-container {
+    max-width: 1500px !important;
+  }
+  /* Whole document: */
+  body{
+    font-family: Helvetica;
+    font-size: 12pt;
+  }
+</style>
+
+
+*Change Log:* 
+
+1. added clear instructions  
+2. highlighted where needs to pay attention <span style="color: blue;">*in blue*</span>  
+3. highlighted the output files <span style="color: brown;">*in brown*</span>  
+4. added the timestamp and name of the analyst in the end  
+
+### Purpose
+This script aims to create a utility program which does the followings:  
+
++ convert the basic pheno to the Tryggve Code Book ("tcb")  
++ process three simple queries  
++ output metadata on the basic pheno  
+
+<p style="color:red">**N.B. the output from these queries contains aggregated values ONLY - *no inidividual-level data are written out or displayed*.**</p>
+
+***
+## Instructions
+
+#### Sample code to run in command line:
+```{bash}
+echo "Rscript -e \"rmarkdown::render('tryggve.query1.v2.Rmd',params=list(arg1='/Users/luyi/Downloads/tryggve',arg2='NOR'))\""
+```
+
+#### Parameters:
+1. path of the main directory  
+2. country code  
+
+#### Input files:
+1. genotype master file    
+2. phenotype file  
+
+#### Required file format:  
+
+**Input #1: geno master file**  
+*This is a space- or tab-delimited tsv file which contains country or cohort names, file path and file names. One master file per country.*  
+An example is provided in example.tryggve.master.file.tsv, and displayed below.
+```{r}
+if (file.exists("example.tryggve.master.file.tsv")) {
+  tmp1 <- read.table("example.tryggve.master.file.tsv", header=T)
+  head(tmp1)
+} else {
+  print("ERROR: example file missing, ask Lu Yi")
+}
+
+```
+  
+**Input #2: pheno file**  
+*This is a space- or tab-delimited tsv file which contains geno-matched IDs and basic phenotypes. One pheno file per cohort.*  
+The 3 key variables are:  
+
+- 2 string variable, tcb_sex ("M"/"F") and tcb_mddLife ("TRUE"/"FALSE")  
+- 1 continuous variable, tcb_age  
+
+A toy example is provided in example.tryggve.pheno.file.tsv, and displayed below (not real personal data).
+```{r}
+if (file.exists("example.tryggve.pheno.file.tsv")) {
+  tmp2 <- read.table("example.tryggve.pheno.file.tsv", header=T)
+  head(tmp2)
+} else {
+  print("ERROR: example file missing, ask Lu Yi")
+}
+
+```
+
+
+
+
+***
+## Prep step 
+#### Setting up R pkgs
+- Perform sanity check if the R pkgs exist   
+- Install the missing packages if any
+
+```{r setup, message =FALSE, warning= FALSE}
+# add ",message =FALSE, warning= FALSE" to suppress messages. 
+
+#==== check if the required R packages are installed
+#     & install the package(s) if not there
+required.Rpackages <- 
+  c("tidyverse", "data.table", "kableExtra", "knitr", "summarytools")
+
+new.packages <- required.Rpackages[!(required.Rpackages %in% installed.packages()[,"Package"])]
+
+if (length(new.packages)) { 
+  # if there are new packages, install
+  install.packages(new.packages) 
+  } else {
+  # if all required packages are there, just load 
+library(tidyverse)
+library(data.table)
+library(kableExtra)
+
+library(knitr)
+# plus some suggested settings to improve the html output
+opts_chunk$set(results = 'asis',      # This is essential (can also be set at the chunk-level)
+              comment = NA, 
+              prompt = FALSE, 
+              cache = FALSE)
+
+library(summarytools)
+# plus some suggested settings to improve the html output
+st_options(plain.ascii = FALSE,       # This is very handy in all Rmd documents
+           style = "rmarkdown",       # This too
+           footnote = NA,             # Avoids footnotes which would clutter the results
+           subtitle.emphasis = FALSE  # this might improve the headings' layout
+           )    
+}
+```
+
+```{r, echo=FALSE}
+st_css()   # separate this option to avoid a long text of messages
+```
+
+
+#### Read parameters and data
+- Perform sanity check if the master file exists  
+  -  No? - print error message and stop execution  
+  -  Yes! - continue to load the files  
+
+<p style="color:blue">*Check the output below - look out for Error or Success message.* </p>  
+
+```{r read all pheno}
+#=== setup variables
+MAIN_DIR  <- params$arg1
+COUNTRY <- params$arg2
+
+MasterFile_name <- paste0(COUNTRY, ".tryggve.master.file.tsv")
+MasterFile_path <- paste(MAIN_DIR, MasterFile_name, sep="/")
+
+# sanity check if the master file exists
+
+if (file.exists(MasterFile_path)) {
+  print("Successfully locate the master file, continue processing Query 1")
+} else {
+  print("ERROR: master file does not exist, stop processing Query 1");
+  quit()
+}
+
+#=== get master file
+Master <- fread(MasterFile_path, stringsAsFactors = FALSE, data.table = FALSE)
+
+#===  read in all pheno data
+# remove the dataset final if it already exists
+if (exists("final") == TRUE) { rm(final) }
+# loop over the files in the master list
+for(i in 1:nrow(Master)) {
+  a <- Master %>% slice(i:i)
+  b <- paste(a$tcb_folder, a$tcb_pheno, sep="/")
+  c <- fread(b, stringsAsFactors = FALSE, data.table = FALSE)
+  d <- cbind(a, c) %>% select(-tcb_folder, -tcb_plink, -tcb_pheno)
+  if (exists("final") == FALSE) { final <- d } else { final <- bind_rows(final, d) }
+  rm(a,b,c,d)
+}
+
+str(final)
+```
+<p style="color:blue">*Check if the data have been read in properly.*</p>  
+*e.g., for toydata, the dataframe 'final' should have 8 vars and 600 obs* 
+
+***
+**Next - process the queries** 
+
+- Query 1.1 - are all tcb_fid-tcb_iid combinations in final unique?  
+- Query 1.2 - summarise data for all samples  
+- Query 1.3 - summarise the 3 key variables, for each tcb_cohort-tcb_subcohort  
+
+
+## Query 1.1 - check unique IDs
+### Table 1. Number of unique IDs in cohort-subcohort
+```{r query 1.1}
+
+# Check the combination of IDs within each cohort-subcohort 
+query1.1 <- final %>% 
+  # concatenate the FID-IID
+  mutate(fid_iid = paste(tcb_fid,tcb_iid, sep="_")) %>%
+  # for each cohort-subcohort combination
+  group_by(tcb_cohort, tcb_subcohort) %>%
+  # calculate number of rows, and number of unique FID-IID
+  summarise(
+    N_row=n(),
+    N_uniqID=length(unique(fid_iid))
+    ) %>% 
+  # add an indicator showing whether all IDs are unique
+  mutate(I_alluniqIDs = ifelse(N_uniqID == N_row, 1, 0))
+
+# display nicely
+query1.1 %>% 
+  # use kable() to make a nice table
+  kable() %>% 
+  kable_styling("striped", full_width = F) 
+
+# save the query1.1 results 
+query1.1_name <- paste0(COUNTRY, ".tryggve.query1.1.tsv")
+query1.1_path <- paste(MAIN_DIR, query1.1_name, sep="/")
+
+fwrite(query1.1, file = query1.1_path, quote = F, sep="\t")
+
+# print out which data subsets contains duplicate IDs, if any
+for (i in c(1:nrow(query1.1))) {
+  if (query1.1$I_alluniqIDs[i] == 1) {i=i+1} 
+  else { print(query1.1[i,]) }
+}
+
+# N.B. no output here means no duplicate IDs. 
+```
+<p style="color:blue">*Check in the table - 'I_alluniqIDs' == 0 indicates duplicate IDs. * </p>  
+
+<p style="color:brown">The Table 1 is written out as "COUNTY.tryggve.query1.1.tsv".</p>
+
+***
+## Query 1.2 - summarise data for all samples
+### Table 2. Descriptive statistics across the entire cohort
+```{r description tables for all samples, results='asis'}
+
+df <- final %>% 
+  # drop id variables when describing data
+  select(-tcb_fid, -tcb_iid) %>% 
+  # set cohort and subcohort as factor variables 
+  mutate(
+    tcb_cohort = as.factor(tcb_cohort),
+    tcb_subcohort = as.factor(tcb_subcohort)
+  )
+# print nice summary tables using dfSummary()
+dfSummary(df, 
+          plain.ascii = FALSE, style = "grid", 
+          graph.magnif = 0.75, valid.col = FALSE, headings=F)
+
+
+```
+<p style="color:blue">*Check if variable distributions here and onwards roughly agree to what's known about this cohort.*</p>  
+
+
+***
+## Query 1.3 - summarise the 3 key variables, for each tcb_cohort-tcb_subcohort
+
+### Table 3. Age by cohort-subcohort
+```{r description tables for cohort subcohort}
+
+# Continuous variable: tcb_age
+
+# Putting description of continuous variable (age) into one table
+continuous_grouped_descr <- stby(data = df$tcb_age, 
+                      INDICES = df[, c("tcb_cohort","tcb_subcohort")], 
+                      FUN = descr, stats = "common", round.digits = 0)
+# the table below still displays many digits...
+
+# save the descriptive data on age 
+query1.3_age <- continuous_grouped_descr %>% tb() %>% arrange(tcb_cohort)
+query1.3_age_name <- paste0(COUNTRY, ".tryggve.query1.3_age.tsv")
+query1.3_age_path <- paste(MAIN_DIR, query1.3_age_name, sep="/")
+
+fwrite(query1.3_age, file = query1.3_age_path, quote = F, sep="\t")
+
+# display nicely
+query1.3_age %>% 
+  # drop unwanted columns 
+  select(-variable) %>% 
+  # use kable() to make a nice table
+  kable() %>% 
+  kable_styling("striped", full_width = F) 
+  # uncommnent the following if want group rows
+#  pack_rows("Cohort1", 1, 3) %>%
+#  pack_rows("Cohort2", 4, 6)  
+
+
+```
+
+<p style="color:brown">The Table 3 is written out as "COUNTY.tryggve.query1.3_age.tsv".</p>
+
+
+
+### Table 4. Sex by cohort-subcohort
+```{r sex}
+# Discrete variable: tcb_sex
+
+n_samples <- df %>% group_by(tcb_cohort,tcb_subcohort) %>% summarise(N_row=n())
+
+n_sex <- df %>% group_by(tcb_cohort,tcb_subcohort,tcb_sex) %>% summarise(N_sex=n())
+
+query1.3_sex <- full_join(n_samples, n_sex, by=c("tcb_cohort","tcb_subcohort")) %>% 
+  mutate(prop_sex = (N_sex/N_row)*100 ) %>% 
+  ungroup()
+
+# save the descriptive data on sex 
+query1.3_sex_name <- paste0(COUNTRY, ".tryggve.query1.3_sex.tsv")
+query1.3_sex_path <- paste(MAIN_DIR, query1.3_sex_name, sep="/")
+
+fwrite(query1.3_sex, file = query1.3_sex_path, quote = F, sep="\t")
+
+# display nicely
+query1.3_sex %>% 
+  pivot_wider(names_from = tcb_sex, values_from = c(N_sex, prop_sex),values_fill = list(seen = 0)) %>% 
+  select(tcb_cohort, tcb_subcohort, N_sex_F, prop_sex_F, N_sex_M, prop_sex_M) %>% 
+  # rename for better presentation, together with add_header_above() row below
+  rename(N = N_sex_F, "%" = prop_sex_F,
+         N = N_sex_M, "%" = prop_sex_M) %>%
+  # use kable() to make a nice table
+  kable() %>% 
+  kable_styling("striped", full_width = F) %>%
+  # uncommnent the following if want group rows
+  pack_rows("Cohort1", 1, 3) %>%
+  pack_rows("Cohort2", 4, 6) %>%
+  add_header_above(c(" ", " ", "Female" = 2, "Male" = 2))
+
+```
+
+<p style="color:brown">The Table 4 is written out as "COUNTY.tryggve.query1.3_sex.tsv".</p>
+
+
+### Table 5. MDD_lifetime by cohort-subcohort
+```{r mdd}
+# Discrete variable: tcb_mddLife
+
+n_mdd <- df %>% group_by(tcb_cohort,tcb_subcohort,tcb_mddLife) %>% summarise(N_mdd=n())
+
+query1.3_mdd <- full_join(n_samples, n_mdd, by=c("tcb_cohort","tcb_subcohort")) %>% 
+  mutate(prop_mdd = (N_mdd/N_row)*100 ) %>%
+  ungroup()
+
+# save the descriptive data on mdd 
+query1.3_mdd_name <- paste0(COUNTRY, ".tryggve.query1.3_mdd.tsv")
+query1.3_mdd_path <- paste(MAIN_DIR, query1.3_mdd_name, sep="/")
+
+fwrite(query1.3_mdd, file = query1.3_mdd_path, quote = F, sep="\t")
+
+
+# display nicely
+query1.3_mdd %>% 
+  pivot_wider(names_from = tcb_mddLife, values_from = c(N_mdd, prop_mdd),values_fill = list(seen = 0)) %>% 
+  select(tcb_cohort, tcb_subcohort, N_mdd_TRUE, prop_mdd_TRUE, N_mdd_FALSE, prop_mdd_FALSE) %>% 
+  # rename for better presentation, together with add_header_above() row below
+  rename(N = N_mdd_TRUE, "%" = prop_mdd_TRUE,
+         N = N_mdd_FALSE, "%" = prop_mdd_FALSE) %>%
+  # use kable() to make a nice table
+  kable() %>% 
+  kable_styling("striped", full_width = F) %>%
+  # uncommnent the following if want group rows
+  pack_rows("Cohort1", 1, 3) %>%
+  pack_rows("Cohort2", 4, 6) %>%
+  add_header_above(c(" ", " ", "MDD_TRUE" = 2, "MDD_FALSE" = 2))
+
+```
+<p style="color:brown">The Table 5 is written out as "COUNTY.tryggve.query1.3_mdd.tsv".</p>
+
+## Timestamp
+```{bash}
+# echo "The program was completed by <INSERT ANALYST NAME HERE> at `date`"
+echo "The program was completed by Lu Yi at `date`"
+```
+
