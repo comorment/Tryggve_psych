@@ -360,8 +360,8 @@ query1.3_mdd %>%
   pivot_wider(names_from = tcb_mddLife, values_from = c(N_mdd, prop_mdd),values_fill = list(seen = 0)) %>% 
   select(tcb_cohort, tcb_subcohort, N_mdd_TRUE, prop_mdd_TRUE, N_mdd_FALSE, prop_mdd_FALSE) %>% 
   # rename for better presentation, together with add_header_above() row below
-  rename(N = N_mdd_TRUE, "%" = prop_mdd_TRUE,
-         N = N_mdd_FALSE, "%" = prop_mdd_FALSE) %>%
+  rename(N_CASE = N_mdd_TRUE, "%_CASE" = prop_mdd_TRUE,
+         N_CONT = N_mdd_FALSE, "%_CONT" = prop_mdd_FALSE) %>%
   # use kable() to make a nice table
   kable() %>% 
   kable_styling("striped", full_width = F) %>%
